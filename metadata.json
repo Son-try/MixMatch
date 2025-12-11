@@ -1,0 +1,7 @@
+{
+  "name": "MixMatch",
+  "description": "A smart wardrobe organizer and AI-powered outfit recommender that helps you style your existing clothes.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
