@@ -1,4 +1,3 @@
-
 export enum ClothingCategory {
   TOP = 'Top',
   BOTTOM = 'Bottom',
@@ -39,10 +38,21 @@ export interface Outfit {
   occasion: string;
   reasoning: string;
   generatedImageUrl?: string; // New field for the visualization
+  rating?: number; // AI Rating score (1-10)
+  critique?: string; // AI Fashion critique
+  stylingTips?: string[]; // List of specific styling tips
+  scheduledDate?: string; // ISO Date string (YYYY-MM-DD)
 }
 
 export interface UserProfile {
   name: string;
   favoriteStyles: StyleType[];
   favoriteColors: string[];
+}
+
+export interface WeatherData {
+  temperature: number;
+  description: string;
+  isRaining: boolean;
+  isSnowing: boolean;
 }
