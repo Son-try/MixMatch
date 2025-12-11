@@ -1,6 +1,5 @@
-
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { ClothingItem, ClothingCategory, StyleType } from "../types";
+import { ClothingItem, ClothingCategory, StyleType, WeatherData } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -75,7 +74,8 @@ export const analyzeClothingImage = async (base64Image: string): Promise<Partial
 export const generateOutfitSuggestions = async (
   wardrobe: ClothingItem[],
   occasion: string,
-  userStylePreference: string
+  userStylePreference: string,
+  weather?: WeatherData | null
 ): Promise<any[]> => {
   
   if (wardrobe.length === 0) return [];
@@ -105,12 +105,24 @@ export const generateOutfitSuggestions = async (
     },
   };
 
+  let weatherContext = "";
+  if (weather) {
+    weatherContext = `
+      CURRENT WEATHER: ${weather.temperature}°C, ${weather.description}.
+      Constraint: The outfit MUST be appropriate for this weather.
+      ${weather.isRaining ? "It is raining, so prioritize waterproof items or suggest carrying an umbrella (even if not in wardrobe, mention it in reasoning)." : ""}
+      ${weather.temperature < 15 ? "It is cold, ensure the outfit provides warmth (layering)." : ""}
+      ${weather.temperature > 25 ? "It is hot, ensure the outfit is breathable and light." : ""}
+    `;
+  }
+
   const prompt = `
     I have the following clothes in my wardrobe:
     ${JSON.stringify(wardrobeSummary)}
 
     Please create 3 distinct outfit combinations for a "${occasion}" occasion.
     The user prefers "${userStylePreference}" style, but feel free to mix and match if it looks good.
+    ${weatherContext}
     
     Rules:
     1. An outfit must minimally include a TOP and a BOTTOM, or a Dress (if available).
@@ -149,13 +161,8 @@ export const generateOutfitVisualization = async (
   gender: string
 ): Promise<string | null> => {
   try {
-    const prompt = `
-      A professional full-body fashion photography shot of a ${gender} model wearing the following outfit for a ${occasion}:
-      ${outfitDescription}.
-      
-      The image should be photorealistic, high resolution, with a clean neutral background. 
-      Focus on the color combination and style described.
-    `;
+    // Optimized prompt for speed and clarity
+    const prompt = `Fashion photography, full body shot, ${gender} model wearing: ${outfitDescription}. Occasion: ${occasion}. Photorealistic, 4k, clean background.`;
 
     const response = await ai.models.generateContent({
       model: IMAGE_MODEL_NAME,
@@ -164,7 +171,7 @@ export const generateOutfitVisualization = async (
       },
       config: {
         imageConfig: {
-          aspectRatio: "3:4" // Portrait for outfit
+          aspectRatio: "3:4" 
         }
       }
     });
@@ -179,5 +186,63 @@ export const generateOutfitVisualization = async (
   } catch (error) {
     console.error("Error generating outfit visualization:", error);
     return null;
+  }
+};
+
+/**
+ * Rates an outfit and provides styling tips.
+ */
+export const rateOutfit = async (
+  items: ClothingItem[],
+  occasion: string
+): Promise<{ rating: number; critique: string; stylingTips: string[] }> => {
+  const itemsDescription = items.map(i => `${i.color} ${i.style} ${i.category} (${i.description})`).join(', ');
+  
+  const ratingSchema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      rating: { 
+        type: Type.NUMBER, 
+        description: "A score from 1 to 10 based on color coordination, style matching, and appropriateness for the occasion." 
+      },
+      critique: { 
+        type: Type.STRING, 
+        description: "A 2-sentence critique explaining the good and bad points of the outfit." 
+      },
+      stylingTips: { 
+        type: Type.ARRAY, 
+        items: { type: Type.STRING }, 
+        description: "3 specific, actionable styling tips to improve the look (e.g. 'Tuck in the shirt', 'Add a belt')." 
+      }
+    },
+    required: ["rating", "critique", "stylingTips"],
+  };
+
+  const prompt = `
+    Act as a high-end fashion stylist.
+    Rate the following outfit for a "${occasion}" occasion:
+    Items: ${itemsDescription}
+    
+    Be honest but constructive. Give a score out of 10.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: ratingSchema,
+        temperature: 0.4,
+      },
+    });
+
+    if (response.text) {
+      return JSON.parse(response.text);
+    }
+    throw new Error("No response text");
+  } catch (error) {
+    console.error("Error rating outfit:", error);
+    throw error;
   }
 };
